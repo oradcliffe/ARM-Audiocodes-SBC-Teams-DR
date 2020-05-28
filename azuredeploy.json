@@ -1,0 +1,478 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Location for the resources"
+            }
+        },
+        "vmName": {
+            "type": "string",
+            "defaultValue": "sbc",
+            "metadata": {
+                "description": "Name for the Virtual Machine"
+            }
+        },
+        "adminUsername": {
+            "type": "string",
+            "metadata": {
+                "description": "Admin user name"
+            }
+        },
+        "authenticationType": {
+            "type": "string",
+            "defaultValue": "password",
+            "allowedValues": [
+                "password",
+                "sshPublicKey"
+            ],
+            "metadata": {
+                "description": "Type of admin user authentication"
+            }
+        },
+        "adminPasswordOrKey": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Admin user password or ssh key"
+            }
+        },
+        "vmSize": {
+            "type": "string",
+            "defaultValue": "Standard_DS2_v2",
+            "allowedValues": [
+              "Standard_B1ms",
+              "Standard_B2ms",
+              "Standard_B4ms",
+              "Standard_B8ms",
+              "Standard_DS1_v2",
+              "Standard_DS2_v2",
+              "Standard_DS3_v2",
+              "Standard_DS4_v2"
+            ],
+            "metadata": {
+                "description": "Size for the SBC. See https://docs.microsoft.com/en-us/azure/virtual-machines/sizes-general for more info."
+            }
+        },
+        "initialConfig": {
+            "type": "string",
+            "defaultValue": "",
+            "metadata": {
+                "description": "Initial SBC configuration"
+            }
+        },
+        "virtualNetworkName": {
+            "type": "string",
+            "defaultValue": "SBCVirtualNetwork",
+            "metadata": {
+                "description": "Name of the virtual network"
+            }
+        },
+        "addressPrefixes": {
+            "type": "array",
+            "defaultValue": [
+                "10.0.0.0/16"
+            ],
+            "metadata": {
+                "description": "Address prefix of the virtual network"
+            }
+        },
+        "subnet1Name": {
+            "type": "string",
+            "defaultValue": "Teams-Subnet",
+            "metadata": {
+                "description": "Name of the 1st subnet"
+            }
+        },
+        "subnet1Prefix": {
+            "type": "string",
+            "defaultValue": "10.0.0.0/24",
+            "metadata": {
+                "description": "Prefix of the 1st subnet"
+            }
+        },
+        "publicIpName": {
+            "type": "string",
+            "defaultValue": "Teams-PublicIp",
+            "metadata": {
+                "description": "Name of the public ip address"
+            }
+        },
+        "publicIpAllocationMethod": {
+            "type": "string",
+            "defaultValue": "Dynamic",
+            "allowedValues": [
+                "Dynamic",
+                "Static"
+            ],
+            "metadata": {
+                "description": "Allocation method for the public ip address"
+            }
+        },
+        "publicIpSku": {
+            "type": "string",
+            "defaultValue": "Basic",
+            "allowedValues": [
+                "Basic",
+                "Standard"
+            ],
+            "metadata": {
+                "description": "Type of Azure Public IP.  See https://docs.microsoft.com/en-us/azure/virtual-network/virtual-network-ip-addresses-overview-arm for more info."
+            }
+        }
+    },
+    "variables": {
+        "linuxConfiguration": {
+            "disablePasswordAuthentication": true,
+            "ssh": {
+                "publicKeys": [
+                    {
+                        "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                        "keyData": "[parameters('adminPasswordOrKey')]"
+                    }
+                ]
+            }
+        },
+        "publicIpAddressId": {
+            "id": "[resourceId(variables('publicIpResourceGroupName'), 'Microsoft.Network/publicIPAddresses', parameters('publicIpName'))]"
+        },
+        "networkSecurityGroupName": "[concat(parameters('vmName'), '-nsg')]",
+        "storageAccountName": "[concat('diag', uniqueString(resourceGroup().id))]",
+        "storageAccountType": "Standard_LRS",
+        "virtualNetworkNewOrExisting": "new",
+        "publicIpNewOrExisting": "new",
+        "vmName": "[if(and(equals(variables('virtualNetworkNewOrExisting'), 'existing'), equals(parameters('vmName'), parameters('virtualNetworkName'))), concat(parameters('vmName'), '-vm'), parameters('vmName'))]",
+        "virtualNetworkName": "[if(and(equals(variables('virtualNetworkNewOrExisting'), 'new'), equals(parameters('vmName'), parameters('virtualNetworkName'))), concat(parameters('virtualNetworkName'), '-vnet'), parameters('virtualNetworkName'))]",
+        "subnetNames": "[parameters('subnet1Name')]",
+        "subnetPrefixes": "[parameters('subnet1Prefix')]",
+        "bootDiagnostics": true,
+        "interfaceNumber": 1,
+        "virtualNetworkResourceGroupName": "[resourceGroup().name]",
+        "publicIpDns": "[concat('sbc-', uniqueString(resourceGroup().id))]",
+        "publicIpResourceGroupName": "[resourceGroup().name]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2018-07-01",
+            "name": "[variables('storageAccountName')]",
+            "location": "[parameters('location')]",
+            "kind": "Storage",
+            "sku": {
+                "name": "[variables('storageAccountType')]"
+            }
+        },
+        {
+            "condition": "[equals(variables('publicIpNewOrExisting'), 'new')]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2018-08-01",
+            "name": "[parameters('publicIpName')]",
+            "location": "[parameters('location')]",
+            "sku": {
+                "name": "[parameters('publicIpSku')]"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "[parameters('publicIpAllocationMethod')]",
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('publicIpDns')]"
+                }
+            }
+        },
+        {
+            "condition": "[equals(variables('virtualNetworkNewOrExisting'), 'new')]",
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2018-08-01",
+            "name": "[variables('virtualNetworkName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": "[parameters('addressPrefixes')]"
+                },
+                "copy": [
+                    {
+                        "name": "subnets",
+                        "count": "[variables('interfaceNumber')]",
+                        "input": {
+                            "name": "[variables('subnetNames')[copyIndex('subnets')]]",
+                            "properties": {
+                                "addressPrefix": "[variables('subnetPrefixes')[copyIndex('subnets')]]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('networkSecurityGroupName')]",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2018-08-01",
+            "location": "[parameters('location')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "ssh",
+                        "properties": {
+                            "priority": 500,
+                            "protocol": "Tcp",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22"
+                        }
+                    },
+                    {
+                        "name": "http",
+                        "properties": {
+                            "priority": 510,
+                            "protocol": "Tcp",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "80"
+                        }
+                    },
+                    {
+                        "name": "https",
+                        "properties": {
+                            "priority": 520,
+                            "protocol": "Tcp",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "443"
+                        }
+                    },
+                    {
+                        "name": "sip-udp",
+                        "properties": {
+                            "priority": 1000,
+                            "protocol": "Udp",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "5060 - 5090"
+                        }
+                    },
+                    {
+                        "name": "sip-tcp",
+                        "properties": {
+                            "priority": 1010,
+                            "protocol": "Tcp",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "5060 - 5090"
+                        }
+                    },
+                    {
+                        "name": "media",
+                        "properties": {
+                            "priority": 1020,
+                            "protocol": "Udp",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "6000 - 65535"
+                        }
+                    },
+                    {
+                        "name": "TCP_5061",
+                        "properties": {
+                            "protocol": "TCP",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "5061",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 1030,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [
+                                "99.229.157.15",
+                                "52.114.148.0",
+                                "52.114.132.46",
+                                "52.114.75.24",
+                                "52.114.76.76",
+                                "52.114.7.24",
+                                "52.114.14.70"
+                            ],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "UDP_5060",
+                        "properties": {
+                            "protocol": "UDP",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "5060",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 1040,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [
+                                "147.75.65.192/28",
+                                "34.226.36.32/28",
+                                "34.210.91.112/28",
+                                "147.75.60.160/28",
+                                "216.115.69.0/24",
+                                "23.29.31.0/24",
+                                "34.211.73.0/24"
+                            ],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "TEAMSMEDIA",
+                        "properties": {
+                            "protocol": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 1050,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [
+                                "52.112.0.0/14",
+                                "147.75.65.192/28",
+                                "34.226.36.32/28",
+                                "34.210.91.112/28",
+                                "147.75.60.160/28",
+                                "216.115.69.0/24",
+                                "23.29.31.0/24",
+                                "34.211.73.0/24"
+                            ],
+                            "destinationAddressPrefixes": []
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2018-08-01",
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[concat(parameters('vmName'), '-eth', copyIndex())]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[parameters('publicIpName')]",
+                "[variables('networkSecurityGroupName')]",
+                "[variables('virtualNetworkName')]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[resourceId(variables('virtualNetworkResourceGroupName'), 'Microsoft.Network/virtualNetworks/subnets/', variables('virtualNetworkName'), variables('subnetNames')[copyIndex()])]"
+                            },
+                            "publicIPAddress": "[if(and(equals(copyIndex(), 0), not(equals(variables('publicIpNewOrExisting'), 'none'))), variables('publicIpAddressId') , json('null'))]"
+                        }
+                    }
+                ],
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
+                }
+            },
+            "copy": {
+                "name": "nicCopy",
+                "count": "[variables('interfaceNumber')]"
+            }
+        },
+        {
+            "apiVersion": "2018-10-01",
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[variables('vmName')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[variables('storageAccountName')]",
+                "nicCopy"
+            ],
+            "plan": {
+                "name": "mediantvirtualsbcazure",
+                "publisher": "audiocodes",
+                "product": "mediantsessionbordercontroller"
+            },
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                    "computerName": "[variables('vmName')]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('adminPasswordOrKey')]",
+                    "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "audiocodes",
+                        "offer": "mediantsessionbordercontroller",
+                        "sku": "mediantvirtualsbcazure",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage"
+                    }
+                },
+                "networkProfile": {
+                    "copy": [
+                        {
+                            "name": "networkInterfaces",
+                            "count": "[variables('interfaceNumber')]",
+                            "input": {
+                                "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('vmName'), '-eth', copyIndex('networkInterfaces')))]",
+                                "properties": {
+                                    "primary": "[equals(copyIndex('networkInterfaces'), 0)]"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": "[variables('bootDiagnostics')]",
+                        "storageUri": "[reference(resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountName')), '2018-07-01').primaryEndpoints.blob]"
+                    }
+                }
+            }
+        },
+        {
+            "apiVersion": "2018-05-01",
+            "name": "pid-ada714b6-8694-54fc-8218-13251e6a77e6",
+            "type": "Microsoft.Resources/deployments",
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "resources": []
+                }
+            }
+        }
+    ],
+    "outputs": {
+        "fqdn": {
+            "type": "string",
+            "value": "[if(equals(variables('publicIpNewOrExisting'), 'none'), 'no public ip', reference(resourceId(variables('publicIpResourceGroupName'), 'Microsoft.Network/publicIPAddresses', parameters('publicIpName')), '2018-08-01').dnsSettings.fqdn)]"
+        }
+    }
+}
