@@ -141,7 +141,6 @@
         "networkSecurityGroupName": "[concat(parameters('vmName'), '-nsg')]",
         "storageAccountName": "[concat('diag', uniqueString(resourceGroup().id))]",
         "storageAccountType": "Standard_LRS",
-        "virtualNetworkNewOrExisting": "new",
         "publicIpNewOrExisting": "new",
         "vmName": "[parameters('vmName')]",
         "virtualNetworkName": "[parameters('virtualNetworkName')]",
