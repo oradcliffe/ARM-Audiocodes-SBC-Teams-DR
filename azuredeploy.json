@@ -1,17 +1,17 @@
 {
-    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
         "location": {
             "type": "string",
             "defaultValue": "[resourceGroup().location]",
             "metadata": {
-                "description": "Location for the resources"
+                "description": "Location for the resources - SBC and network objects"
             }
         },
         "vmName": {
             "type": "string",
-            "defaultValue": "sbc",
+            "defaultValue": "sbc-01",
             "metadata": {
                 "description": "Name for the Virtual Machine"
             }
@@ -81,21 +81,21 @@
         },
         "subnet1Name": {
             "type": "string",
-            "defaultValue": "Teams-Subnet",
+            "defaultValue": "SBC-Subnet",
             "metadata": {
-                "description": "Name of the 1st subnet"
+                "description": "Name of the subnet"
             }
         },
         "subnet1Prefix": {
             "type": "string",
             "defaultValue": "10.0.0.0/24",
             "metadata": {
-                "description": "Prefix of the 1st subnet"
+                "description": "Prefix of the subnet"
             }
         },
         "publicIpName": {
             "type": "string",
-            "defaultValue": "Teams-PublicIp",
+            "defaultValue": "SBC-PublicIp",
             "metadata": {
                 "description": "Name of the public ip address"
             }
@@ -143,8 +143,8 @@
         "storageAccountType": "Standard_LRS",
         "virtualNetworkNewOrExisting": "new",
         "publicIpNewOrExisting": "new",
-        "vmName": "[if(and(equals(variables('virtualNetworkNewOrExisting'), 'existing'), equals(parameters('vmName'), parameters('virtualNetworkName'))), concat(parameters('vmName'), '-vm'), parameters('vmName'))]",
-        "virtualNetworkName": "[if(and(equals(variables('virtualNetworkNewOrExisting'), 'new'), equals(parameters('vmName'), parameters('virtualNetworkName'))), concat(parameters('virtualNetworkName'), '-vnet'), parameters('virtualNetworkName'))]",
+        "vmName": "[parameters('vmName')]",
+        "virtualNetworkName": "[parameters('virtualNetworkName')]",
         "subnetNames": "[parameters('subnet1Name')]",
         "subnetPrefixes": "[parameters('subnet1Prefix')]",
         "bootDiagnostics": true,
