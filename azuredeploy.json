@@ -165,7 +165,6 @@
             }
         },
         {
-            "condition": "[equals(variables('publicIpNewOrExisting'), 'new')]",
             "type": "Microsoft.Network/publicIPAddresses",
             "apiVersion": "2018-08-01",
             "name": "[parameters('publicIpName')]",
@@ -181,7 +180,6 @@
             }
         },
         {
-            "condition": "[equals(variables('virtualNetworkNewOrExisting'), 'new')]",
             "type": "Microsoft.Network/virtualNetworks",
             "apiVersion": "2018-08-01",
             "name": "[variables('virtualNetworkName')]",
